@@ -1,0 +1,12 @@
+Metadata-Version: 2.4
+Name: personal-brain
+Version: 0.0.1
+Summary: A personal brain prototype that answers questions over Gmail and Drive data
+Requires-Python: >=3.10
+Requires-Dist: fastapi
+Requires-Dist: uvicorn
+Requires-Dist: streamlit
+Requires-Dist: google-api-python-client
+Requires-Dist: google-auth-oauthlib
+Requires-Dist: anthropic
+Requires-Dist: python-frontmatter

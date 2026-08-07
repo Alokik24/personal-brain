@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools==82.0.1", 'setuptools-scm==10.0.5']
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "personal-brain"
+version = "0.0.1"
+description = "A personal brain prototype that answers questions over Gmail and Drive data"
+requires-python = ">=3.10"
+
+dependencies = [
+  "fastapi",
+  "uvicorn",
+  "streamlit",
+  "google-api-python-client",
+  "google-auth-oauthlib",
+  "anthropic",
+  "python-frontmatter",
+]
+
+[tool.setuptools.packages.find]
+where = ['src']

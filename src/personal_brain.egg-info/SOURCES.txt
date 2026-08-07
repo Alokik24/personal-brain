@@ -1,0 +1,8 @@
+pyproject.toml
+src/api/chat.py
+src/personal_brain.egg-info/PKG-INFO
+src/personal_brain.egg-info/SOURCES.txt
+src/personal_brain.egg-info/dependency_links.txt
+src/personal_brain.egg-info/requires.txt
+src/personal_brain.egg-info/top_level.txt
+src/ui/app.py
