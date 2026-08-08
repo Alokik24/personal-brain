@@ -15,6 +15,7 @@ dependencies = [
   "google-api-python-client",
   "google-auth-oauthlib",
   "anthropic",
+  "python-dotenv",
   "python-frontmatter",
 ]
 
