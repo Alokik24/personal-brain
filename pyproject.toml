@@ -19,5 +19,8 @@ dependencies = [
   "python-frontmatter",
 ]
 
+[project.scripts]
+brain-email = "api.cli:main"
+
 [tool.setuptools.packages.find]
 where = ['src']

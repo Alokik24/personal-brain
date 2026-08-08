@@ -94,6 +94,42 @@ python3 scripts/ingest_gmail.py \
 python3 scripts/ingest_gmail.py --query "from:newsletter@example.com" --no-save
 ```
 
+## Ask Questions About Ingested Mail
+
+The Tier-1 Gmail answer flow works on the markdown files under
+`brain-source/emails/`. It combines exact-term matching (especially useful for
+names, amounts, and statuses) with a concise, source-backed answer.
+
+```bash
+source .venv/bin/activate
+python scripts/ask_email.py "What is the pay of fixable Snorkel Task?"
+```
+
+After installing the project in editable mode, the equivalent command is:
+
+```bash
+brain-email "What is the pay of fixable Snorkel Task?"
+```
+
+Each answer prints the supporting email's subject, sender, date, and Gmail
+link. This is intentionally separate from `gbrain search`: that command is
+useful for inspecting semantic candidates, while `ask_email.py` returns the
+user-facing answer.
+
+### Verify the Answer Flow
+
+```bash
+# Runs the deterministic retrieval regression test
+PYTHONPATH=src python -m unittest discover -s tests -v
+
+# Runs against the email exports currently on disk
+python scripts/ask_email.py "What is the pay of fixable Snorkel Task?"
+```
+
+For the current sample export, the latter should report `₹7,000 per submission
+accepted on or before August 15, 2026` and cite the Crossing Hurdles / Snorkel
+email.
+
 ## Gmail Search Query Reference
 
 ### Time-based

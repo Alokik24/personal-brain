@@ -177,6 +177,41 @@ The frontmatter includes:
 
 Combine with operators: `is:unread AND from:user@example.com AND newer_than:1m`
 
+## Ask Gmail questions
+
+`gbrain search` is useful for exploring semantic matches, but it prints search
+snippets. For a Tier-1 conversational, evidence-backed answer over the local
+Gmail export, use:
+
+```bash
+source .venv/bin/activate
+python scripts/ask_email.py "What is the pay of fixable Snorkel task?"
+# or, after `pip install -e .`:
+brain-email "What is the pay of fixable Snorkel task?"
+```
+
+This uses hybrid retrieval: exact matches in the subject/sender/body are ranked
+above broad semantic matches, then the best matching email sentence is returned
+with links to the source messages. The same behaviour is available at
+`POST /chat` with `{ "question": "..." }`, or through the Streamlit UI:
+
+```bash
+PYTHONPATH=src streamlit run src/ui/app.py
+```
+
+### Verify the Tier-1 flow
+
+```bash
+# Regression test: checks that exact terms rank the Snorkel payment email first
+PYTHONPATH=src python -m unittest discover -s tests -v
+
+# Verify against the locally ingested Gmail export
+python scripts/ask_email.py "What is the pay of fixable Snorkel Task"
+```
+
+The expected answer from the current export is `₹7,000 per submission accepted
+on or before August 15, 2026`. The response also includes a Gmail source link.
+
 ## Project Structure
 
 ```
@@ -187,11 +222,12 @@ personal_brain/
 ├── README.md                    # This file
 │
 ├── scripts/
-│   └── ingest_gmail.py         # Gmail OAuth2 ingestion script
+│   ├── ingest_gmail.py         # Gmail OAuth2 ingestion script
+│   └── ask_email.py            # Tier-1 Gmail question launcher
 │
 ├── src/
-│   ├── api/                    # API endpoints (planned)
-│   └── ui/                     # UI components (planned)
+│   ├── api/                    # Gmail retrieval and FastAPI endpoint
+│   └── ui/                     # Streamlit chat UI
 │
 └── brain-source/
     └── emails/                 # Ingested email markdown files
