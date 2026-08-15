@@ -15,6 +15,8 @@ from typing import Iterable
 
 import frontmatter
 
+from .grounded_synthesis import synthesize_answer
+
 
 EMAIL_DIRECTORY = Path(__file__).resolve().parents[2] / "brain-source" / "emails"
 TOKEN_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
@@ -162,6 +164,17 @@ def answer_email_question(question: str, directory: Path = EMAIL_DIRECTORY) -> d
             for result in source_results
         )
         answer = f"I found {len(source_results)} relevant emails. {items}"
+
+    answer = synthesize_answer(
+        question,
+        (
+            f"Subject: {result.email.subject}\nFrom: {result.email.sender}\n"
+            f"Date: {result.email.date}\n\n{result.email.body}"
+            for result in source_results
+        ),
+        answer,
+        "Gmail",
+    )
 
     return {
         "answer": answer,

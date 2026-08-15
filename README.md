@@ -76,8 +76,35 @@ GMAIL_REFRESH_TOKEN=your_refresh_token
 
 # Optional: API Keys for gbrain models
 OPENROUTER_API_KEY=your_openrouter_key
-ANTHROPIC_API_KEY=your_anthropic_key
+# Optional override for conversational, source-grounded synthesis
+OPENROUTER_MODEL=anthropic/claude-sonnet-4.6
+# Explicit opt-in: model requests may incur API usage
+PERSONAL_BRAIN_ENABLE_SYNTHESIS=true
 ```
+
+When `OPENROUTER_API_KEY` and `PERSONAL_BRAIN_ENABLE_SYNTHESIS=true` are set,
+Gmail and Drive answers are synthesized from only the retrieved local source
+text. The prompt requires an explicit
+"I don't know from the retrieved … records" response when the evidence does
+not answer the question. Without a key or if the model call fails, the app uses
+the deterministic local answer path instead. Spreadsheet totals always remain
+deterministic.
+
+### Drive authorization
+
+Drive ingestion needs a refresh token authorized with the `drive.readonly`
+scope. A Gmail-only token cannot list or export Drive files. Create a dedicated
+Drive token once, then save the printed value as `DRIVE_REFRESH_TOKEN` in
+`.env`:
+
+```bash
+source .venv/bin/activate
+python scripts/authorize_drive.py
+```
+
+The browser flow uses `DRIVE_CLIENT_ID` / `DRIVE_CLIENT_SECRET`, falling back
+to `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` if those values describe the same
+OAuth client. Do not commit the resulting token.
 
 ### Getting Gmail OAuth2 Credentials
 
@@ -190,7 +217,15 @@ python scripts/ask_email.py "What is the pay of fixable Snorkel task?"
 brain-email "What is the pay of fixable Snorkel task?"
 ```
 
-This uses hybrid retrieval: exact matches in the subject/sender/body are ranked
+For locally exported Drive files, use the equivalent Drive-only command:
+
+```bash
+python scripts/ask_drive.py "Where is my Snorkel take-home submission?"
+# or, after `pip install -e .`:
+brain-drive "Where is my Snorkel take-home submission?"
+```
+
+Both answer commands use hybrid retrieval: exact matches in the subject/sender/body are ranked
 above broad semantic matches, then the best matching email sentence is returned
 with links to the source messages. The same behaviour is available at
 `POST /chat` with `{ "question": "..." }`, or through the Streamlit UI:

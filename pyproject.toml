@@ -21,6 +21,7 @@ dependencies = [
 
 [project.scripts]
 brain-email = "api.cli:main"
+brain-drive = "api.drive_cli:main"
 
 [tool.setuptools.packages.find]
 where = ['src']
