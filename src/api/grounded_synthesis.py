@@ -61,7 +61,7 @@ material to the answer."""
             "https://openrouter.ai/api/v1/chat/completions",
             data=json.dumps({
                 "model": os.getenv("OPENROUTER_MODEL", "anthropic/claude-sonnet-4.6"),
-                "max_tokens": 500,
+                "max_tokens": 2000,
                 "temperature": 0,
                 "messages": [
                     {"role": "system", "content": system},
@@ -76,8 +76,18 @@ material to the answer."""
             method="POST",
         )
         with urlopen(request, timeout=30) as response:
-            payload = json.loads(json.loads(response.read().decode("utf-8"))["choices"][0]["message"]["content"])
-    except Exception:
+            raw_response = response.read().decode("utf-8")
+            response_json = json.loads(raw_response)
+
+            print("MODEL RESPONSE OBJECT:")
+            print(json.dumps(response_json, indent=2))
+
+            content = response_json["choices"][0]["message"]["content"]
+            print("\nCONTENT:", repr(content))
+
+            payload = json.loads(content)
+    except Exception as exc:
+        print(f"SYNTHESIS ERROR: {type(exc).__name__}: {exc}")
         return {"answer": fallback, "citations": []}
 
     answer = payload.get("answer", "").strip() if isinstance(payload, dict) else ""
