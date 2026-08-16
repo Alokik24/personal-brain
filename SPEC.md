@@ -86,9 +86,11 @@ The body content will include the file name, mime type, parent folder context, a
 2. Fetch a selected set of relevant records from each connector.
 3. Normalize each record into a markdown document with the required frontmatter fields.
 4. Store each document in gbrain as a page with a deterministic title and metadata.
-5. Optionally enrich records with links between Gmail and Drive artifacts when a file attachment is clearly associated with a thread or email.
+5. Optionally preserve metadata that is already present in the source data,
+   such as attachment relationships or Drive links.
 
-The initial ingestion will be conservative and explicit. Only the records needed for the demo queries will be imported first, with later iterations expanding coverage.
+The prototype does not require hardcoded Gmail-to-Drive relationships. Cross-source
+relationships are resolved through gbrain retrieval and synthesis.
 
 ## Query flow
 
@@ -106,11 +108,45 @@ The core retrieval pattern is:
 
 The system should prefer grounding every answer in actual retrieved evidence and avoid inventing missing facts.
 
+### Final implementation
+
+The prototype uses two query paths:
+
+- **Single-source queries:** Gmail and Google Drive use their respective
+  source-specific retrieval and synthesis paths.
+- **Cross-source queries:** queries requiring reasoning across Gmail and Drive
+  are delegated to `gbrain think`, which performs retrieval and synthesis over
+  the connected gbrain pages.
+
+This keeps cross-source reasoning inside gbrain rather than implementing a
+separate application-level correlation engine.
+
+The final architecture therefore remains consistent with the core retrieval
+pattern in this specification:
+
+- retrieve relevant evidence
+- reason over grounded context
+- return a conversational answer with citations
+
+The implementation does not hardcode relationships between specific Gmail
+messages and Drive files.
+
 ## Demo queries
 
 1. Tier 1 example: "What’s on my calendar tomorrow?"
 2. Tier 2 example: "What jobs have I applied to, and what’s my status on each, including my take-home submission?"
 3. Tier 2 example: "Did I ever send Priya the contract draft, and did she reply?"
+
+### Validation queries used in the prototype
+
+Tier 1:
+- "Find the email from Acme Technologies about the Backend Engineer assessment."
+- "What does the Acme Technologies Backend Engineer assessment ask me to do?"
+
+Tier 2:
+- "What jobs have I applied to, and what's my status on each, including my
+  take-home submission?"
+- "Did I ever send Priya the contract draft, and did she reply?"
 
 ## Implementation notes for this milestone
 

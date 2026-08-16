@@ -1,428 +1,314 @@
 # Personal Brain
 
-A personal knowledge management system using **gbrain** (local PGLite) and Gmail ingestion with OAuth2.
+A conversational personal knowledge assistant built for the SkillLayer SDE I take-home assignment.
 
-## Overview
+Personal Brain connects Gmail and Google Drive, stores their data in [gbrain](https://github.com/garrytan/gbrain), and answers natural-language questions through a Streamlit chat interface.
 
-This project integrates:
+The system supports both single-source questions and cross-source reasoning without hardcoded relationships between specific Gmail messages and Drive files.
 
-- **gbrain**: A local knowledge brain powered by PGLite (Postgres in SQLite)
-- **Gmail API**: OAuth2-based email ingestion
-- **Python backend**: Gmail ingestion script and API services
+## Architecture
 
-## Quick Start
+```text
+                    ┌─────────────────┐
+                    │   Streamlit UI  │
+                    └────────┬────────┘
+                             │
+                    ┌────────▼────────┐
+                    │  Query routing  │
+                    └────┬─────┬──────┘
+                         │     │
+                 Email   │     │   Google Drive
+                         │     │
+                    ┌────▼─┐ ┌─▼──────┐
+                    │Gmail │ │ Drive  │
+                    │path  │ │ path   │
+                    └────┬─┘ └──┬─────┘
+                         │       │
+                         └───┬───┘
+                             │
+                         Both queries
+                             │
+                      ┌──────▼──────┐
+                      │    gbrain   │
+                      │    think    │
+                      └──────┬──────┘
+                             │
+                      ┌──────▼──────┐
+                      │ LLM synthesis│
+                      │ + citations │
+                      └──────┬──────┘
+                             │
+                      ┌──────▼──────┐
+                      │   Answer    │
+                      └─────────────┘
+````
 
-### Prerequisites
+### Query paths
 
-- Python 3.14+
-- bun (JavaScript runtime)
-- Gmail OAuth2 credentials (Client ID, Client Secret, Refresh Token)
+**Email**
 
-### 1. Setup Virtual Environment
+Questions selected under `Email` use the Gmail-specific retrieval path.
+
+**Google Drive**
+
+Questions selected under `Google Drive` use the Drive-specific retrieval path.
+
+**Both**
+
+Questions requiring information across Gmail and Drive are sent to:
 
 ```bash
-# Create virtual environment (if not already done)
-python3 -m venv .venv
+gbrain think "<question>"
+```
 
-# Activate virtual environment
+GBrain performs retrieval and synthesis over the connected brain.
+
+The application does not maintain a separate Gmail↔Drive correlation engine or hardcoded relationships between specific records.
+
+## Requirements
+
+* Python 3.10+
+* Bun
+* Google Cloud OAuth credentials
+* Gmail API access
+* Google Drive API access
+* gbrain
+* OpenRouter API key
+
+## Setup
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/Alokik24/personal-brain.git
+cd personal-brain
+```
+
+### 2. Create a virtual environment
+
+```bash
+python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-### 2. Install gbrain
+### 3. Install Python dependencies
+
+```bash
+pip install -e .
+```
+
+If installing manually:
+
+```bash
+pip install google-auth-oauthlib google-api-python-client python-frontmatter streamlit
+```
+
+### 4. Install gbrain
 
 ```bash
 bun install -g github:garrytan/gbrain
 ```
 
-### 3. Initialize Local Brain
+Initialize the local brain:
 
 ```bash
 gbrain init --pglite
 ```
 
-This creates:
-
-- Local brain at `~/.gbrain/brain.pglite`
-- PGLite database (no server needed)
-- Embedding model: `openrouter:openai/text-embedding-3-small`
-- Chat model: `openrouter:anthropic/claude-sonnet-4.6`
-
-**Verify installation:**
+Verify:
 
 ```bash
 gbrain doctor
 ```
 
-Expected output: All core health checks ✓ (database, embeddings, schema, skills)
-
-### 4. Install Python Dependencies
-
-```bash
-source .venv/bin/activate
-pip install google-auth-oauthlib google-api-python-client python-frontmatter
-```
-
 ## Configuration
 
-### Environment Variables
-
-Create or update `.env` with your Gmail OAuth2 credentials:
+Set the required OAuth credentials and OpenRouter key in your environment.
 
 ```env
-# Gmail OAuth2 Credentials
-GMAIL_CLIENT_ID=your_client_id.apps.googleusercontent.com
-GMAIL_CLIENT_SECRET=your_client_secret
-GMAIL_REFRESH_TOKEN=your_refresh_token
+GMAIL_CLIENT_ID=...
+GMAIL_CLIENT_SECRET=...
+GMAIL_REFRESH_TOKEN=...
 
-# Optional: API Keys for gbrain models
-OPENROUTER_API_KEY=your_openrouter_key
-# Optional override for conversational, source-grounded synthesis
-OPENROUTER_MODEL=anthropic/claude-sonnet-4.6
-# Explicit opt-in: model requests may incur API usage
-PERSONAL_BRAIN_ENABLE_SYNTHESIS=true
+DRIVE_CLIENT_ID=...
+DRIVE_CLIENT_SECRET=...
+DRIVE_REFRESH_TOKEN=...
+
+OPENROUTER_API_KEY=...
 ```
 
-When `OPENROUTER_API_KEY` and `PERSONAL_BRAIN_ENABLE_SYNTHESIS=true` are set,
-Gmail and Drive answers are synthesized from only the retrieved local source
-text. The prompt requires an explicit
-"I don't know from the retrieved … records" response when the evidence does
-not answer the question. Without a key or if the model call fails, the app uses
-the deterministic local answer path instead. Spreadsheet totals always remain
-deterministic.
+The GBrain models are configured through GBrain's own configuration.
 
-### Drive authorization
-
-Drive ingestion needs a refresh token authorized with the `drive.readonly`
-scope. A Gmail-only token cannot list or export Drive files. Create a dedicated
-Drive token once, then save the printed value as `DRIVE_REFRESH_TOKEN` in
-`.env`:
+For example:
 
 ```bash
-source .venv/bin/activate
-python scripts/authorize_drive.py
+gbrain config set chat_model openrouter:google/gemini-2.5-flash-lite
 ```
 
-The browser flow uses `DRIVE_CLIENT_ID` / `DRIVE_CLIENT_SECRET`, falling back
-to `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` if those values describe the same
-OAuth client. Do not commit the resulting token.
+The exact model can be changed depending on the available OpenRouter credits.
 
-### Getting Gmail OAuth2 Credentials
-
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project
-3. Enable Gmail API
-4. Create OAuth2 credentials (OAuth 2.0 Client IDs)
-5. Generate refresh token using the `get_refresh_token.py` script (or manually via OAuth flow)
-
-## Gmail Ingestion
-
-### Script: `scripts/ingest_gmail.py`
-
-Ingest emails from Gmail using OAuth2 and save them as markdown files with YAML frontmatter.
-
-#### Usage
+Check the active routing with:
 
 ```bash
-source .venv/bin/activate
-
-# Ingest emails from last 6 months (default) and save as markdown
-python3 scripts/ingest_gmail.py
-
-# Ingest last 50 unread emails
-python3 scripts/ingest_gmail.py --max-results 50 --query "is:unread"
-
-# Ingest emails from specific sender
-python3 scripts/ingest_gmail.py --query "from:user@example.com"
-
-# Fetch emails without saving to files
-python3 scripts/ingest_gmail.py --no-save
-
-# Custom query and results
-python3 scripts/ingest_gmail.py --max-results 100 --query "has:attachment"
-
-# Help
-python3 scripts/ingest_gmail.py --help
+gbrain models
 ```
 
-#### Features
+## Data ingestion
 
-- ✅ OAuth2 authentication via `google-auth-oauthlib`
-- ✅ Gmail API client via `google-api-python-client`
-- ✅ Credentials from environment variables
-- ✅ Configurable search query (default: `newer_than:6m`)
-- ✅ **Saves emails as markdown files** with YAML frontmatter
-- ✅ Extract and decode email bodies (plaintext preferred, HTML fallback)
-- ✅ Parse and include message headers
-- ✅ CLI arguments for filtering and pagination
+The prototype uses OAuth to retrieve data from the connected Google services.
 
-#### Markdown File Format
+Gmail and Drive records are normalized and ingested into the GBrain knowledge store.
 
-Emails are saved to `./brain-source/emails/<threadId>-<messageId>.md` with YAML frontmatter:
-
-```markdown
----
-from: sender@example.com
-to: recipient@example.com
-subject: Email Subject
-date: 2024-08-08T10:30:00+00:00
-thread_id: thread_abc123
-gmail_id: message_xyz789
-gmail_link: https://mail.google.com/mail/u/0/#inbox/message_xyz789
-source: gmail
----
-
-# Email Body
-
-This is the plaintext content of the email.
-Multipart messages default to plaintext, falling back to HTML if unavailable.
-```
-
-The frontmatter includes:
-
-- **from**: Sender email address
-- **to**: Recipient email address
-- **subject**: Email subject line
-- **date**: ISO 8601 formatted date
-- **thread_id**: Gmail thread ID (for conversation grouping)
-- **gmail_id**: Gmail message ID
-- **gmail_link**: Direct link to email in Gmail
-- **source**: Always "gmail" for ingested emails
-
-#### Supported Gmail Queries
-
-- `newer_than:6m` - Emails from last 6 months (default)
-- `is:unread` - Unread emails
-- `is:starred` - Starred emails
-- `from:user@example.com` - Emails from specific sender
-- `to:user@example.com` - Emails to specific recipient
-- `subject:keyword` - Emails with keyword in subject
-- `has:attachment` - Emails with attachments
-- `before:2024-01-01` - Emails before date
-- `after:2024-01-01` - Emails after date
-- `label:name` - Emails with specific label
-- `is:important` - Emails marked as important
-
-Combine with operators: `is:unread AND from:user@example.com AND newer_than:1m`
-
-## Ask Gmail questions
-
-`gbrain search` is useful for exploring semantic matches, but it prints search
-snippets. For a Tier-1 conversational, evidence-backed answer over the local
-Gmail export, use:
+After ingestion, verify that the brain contains the expected records:
 
 ```bash
-source .venv/bin/activate
-python scripts/ask_email.py "What is the pay of fixable Snorkel task?"
-# or, after `pip install -e .`:
-brain-email "What is the pay of fixable Snorkel task?"
+gbrain search "SkillLayer take-home"
 ```
 
-For locally exported Drive files, use the equivalent Drive-only command:
+or:
 
 ```bash
-python scripts/ask_drive.py "Where is my Snorkel take-home submission?"
-# or, after `pip install -e .`:
-brain-drive "Where is my Snorkel take-home submission?"
+gbrain search "Backend Engineer assessment"
 ```
 
-Both answer commands use hybrid retrieval: exact matches in the subject/sender/body are ranked
-above broad semantic matches, then the best matching email sentence is returned
-with links to the source messages. The same behaviour is available at
-`POST /chat` with `{ "question": "..." }`, or through the Streamlit UI:
+## Running the application
+
+Start the Streamlit interface:
 
 ```bash
 PYTHONPATH=src streamlit run src/ui/app.py
 ```
 
-### Verify the Tier-1 flow
+The UI provides three search modes:
 
-```bash
-# Regression test: checks that exact terms rank the Snorkel payment email first
-PYTHONPATH=src python -m unittest discover -s tests -v
+* **Email** — Gmail questions
+* **Google Drive** — Drive questions
+* **Both** — cross-source questions using GBrain
 
-# Verify against the locally ingested Gmail export
-python scripts/ask_email.py "What is the pay of fixable Snorkel Task"
-```
+## Example queries
 
-The expected answer from the current export is `₹7,000 per submission accepted
-on or before August 15, 2026`. The response also includes a Gmail source link.
+### Tier 1 — single-source
 
-## Project Structure
+Gmail:
 
-```
-personal_brain/
-├── .env                          # Environment variables (credentials)
-├── .venv/                        # Python virtual environment
-├── pyproject.toml               # Python project config
-├── README.md                    # This file
+> Find the email from Acme Technologies about the Backend Engineer assessment.
+
+Drive:
+
+> What does the Acme Technologies Backend Engineer assessment ask me to do?
+
+These demonstrate conversational answers grounded in a single connected source.
+
+### Tier 2 — cross-source
+
+> What jobs have I applied to, and what's my status on each, including my take-home submission?
+
+This requires information from multiple sources and is handled through GBrain's cross-source retrieval and synthesis.
+
+Another example:
+
+> Did I ever send Priya the contract draft, and did she reply?
+
+This combines evidence about the contract document with email context and demonstrates that the system is not hardcoded specifically for the SkillLayer example.
+
+## Validation
+
+The prototype was tested through the Streamlit UI and directly through GBrain.
+
+Tier-1 validation confirmed that:
+
+* Gmail can retrieve the relevant Acme Technologies assessment email.
+* Drive can retrieve the corresponding assessment document.
+
+Tier-2 validation confirmed that GBrain can retrieve and synthesize evidence across Gmail and Drive for questions such as the job-application and contract examples.
+
+The system is designed to avoid fabricating information. When the connected data does not contain enough evidence, the answer may explicitly report a gap instead of asserting an unsupported conclusion.
+
+## Project structure
+
+```text
+personal-brain/
+├── README.md
+├── pyproject.toml
+├── .env
 │
 ├── scripts/
-│   ├── ingest_gmail.py         # Gmail OAuth2 ingestion script
-│   └── ask_email.py            # Tier-1 Gmail question launcher
+│   ├── ingest_gmail.py
+│   └── ingest_drive.py
 │
 ├── src/
-│   ├── api/                    # Gmail retrieval and FastAPI endpoint
-│   └── ui/                     # Streamlit chat UI
+│   ├── api/
+│   │   ├── email_search.py
+│   │   ├── drive_search.py
+│   │   ├── gbrain_think.py
+│   │   └── chat.py
+│   │
+│   └── ui/
+│       └── app.py
 │
-└── brain-source/
-    └── emails/                 # Ingested email markdown files
+├── brain-source/
+│   ├── emails/
+│   └── drives/
+│
+└── tests/
 ```
 
-## Brain Architecture
+## Design decisions
 
-### PGLite Configuration
+### Why gbrain?
 
-- **Engine**: PGLite (local Postgres, no server)
-- **Location**: `~/.gbrain/brain.pglite`
-- **Embeddings**: `openrouter:openai/text-embedding-3-small` (768-dim vectors)
-- **Chat Model**: `openrouter:anthropic/claude-sonnet-4.6`
-- **Skills**: 52 bundled skills loaded
+GBrain provides the storage, semantic retrieval, and cross-source reasoning layer required by the assignment.
 
-### Key gbrain Commands
+Using it directly avoids rebuilding a second retrieval/correlation system on top of the same data.
 
-```bash
-# Health check
-gbrain doctor
+### Why separate Tier-1 paths?
 
-# Query the brain
-gbrain think "What do I know about X?"
+Single-source questions do not require cross-source reasoning. The Gmail and Drive paths can therefore answer these questions directly and efficiently.
 
-# List pages
-gbrain pages
+### Why use `gbrain think` for Both?
 
-# Extract links from pages
-gbrain extract links --source db
+The assignment's main challenge is reasoning across multiple personal data sources.
 
-# Extract timeline
-gbrain extract timeline --source db
+For `Both` queries, GBrain is given the complete natural-language question and is responsible for retrieving relevant evidence and synthesizing the answer.
 
-# View stats
-gbrain stats
+This keeps the application layer small and avoids hardcoded rules such as:
+
+```text
+if email.company == drive.company:
+    correlate()
 ```
 
-## Optional Features
+The relationships are discovered from the indexed data and the question itself.
 
-### Link Extraction
+## Limitations
 
-Enhance the knowledge graph by extracting links between pages:
+This is a prototype rather than a production personal-data platform.
 
-```bash
-gbrain extract --stale
-```
+Known limitations include:
 
-### Retrieval Reflex
+* Retrieval quality depends on the data currently ingested into GBrain.
+* Incomplete source data can produce incomplete answers.
+* Ambiguous relationships may not always be resolved correctly.
+* OAuth refresh and production authentication are outside the scope of this prototype.
+* The current deployment is intended primarily for local demonstration.
 
-Install policy skill for advanced retrieval optimization:
+## Assignment alignment
 
-```bash
-gbrain integrations install retrieval-reflex --target <host-repo>
-```
+The prototype demonstrates:
 
-### GStack (Coding Skills)
+* Two connected personal tools: Gmail and Google Drive
+* OAuth-based ingestion
+* GBrain-backed storage
+* A conversational Streamlit interface
+* Single-source Tier-1 retrieval
+* Cross-source Tier-2 reasoning
+* Grounded answers with source citations
+* An SDD documenting the intended system and implementation decisions
 
-Install GStack for coding-specific skills:
+## References
 
-```bash
-git clone https://github.com/garrytan/gstack.git ~/.claude/skills/gstack
-cd ~/.claude/skills/gstack && ./setup
-```
-
-### Subagent Features
-
-For `gbrain dream`, `gbrain agent run`, and `gbrain autopilot`:
-
-```bash
-# Option 1: Set Anthropic API key
-export ANTHROPIC_API_KEY=your_key
-
-# Option 2: Enable gateway loop mode
-gbrain config set agent.use_gateway_loop true
-```
-
-## Migration to Production
-
-When ready to deploy beyond local development:
-
-```bash
-gbrain migrate --to supabase
-```
-
-This migrates the PGLite brain to a cloud-hosted Supabase Postgres instance.
-
-## Development
-
-### Activate Virtual Environment
-
-```bash
-cd /home/keshu/personal_brain
-source .venv/bin/activate
-```
-
-### Add Python Dependencies
-
-```bash
-source .venv/bin/activate
-pip install <package-name>
-```
-
-## Troubleshooting
-
-### "No module named 'google'"
-
-Ensure virtual environment is activated and dependencies are installed:
-
-```bash
-source .venv/bin/activate
-pip install google-auth-oauthlib google-api-python-client
-```
-
-### Gmail Authentication Fails
-
-Check environment variables:
-
-```bash
-echo $GMAIL_CLIENT_ID
-echo $GMAIL_CLIENT_SECRET
-echo $GMAIL_REFRESH_TOKEN
-```
-
-If missing, add to `.env` and reload:
-
-```bash
-source .env
-```
-
-### gbrain Brain Not Found
-
-Ensure initialization is complete:
-
-```bash
-gbrain doctor
-```
-
-If brain is missing, reinitialize:
-
-```bash
-gbrain init --pglite
-```
-
-## Next Steps
-
-- [ ] Implement email → brain page ingestion (parse and store as markdown)
-- [ ] Build API endpoints for brain queries (`src/api/`)
-- [ ] Create UI dashboard for brain exploration (`src/ui/`)
-- [ ] Set up automated email sync (cron or webhook)
-- [ ] Implement link extraction and timeline backfill
-- [ ] Add retrieval reflex for semantic search
-- [ ] Deploy to Supabase for production
-
-## Resources
-
-- [gbrain Documentation](https://github.com/garrytan/gbrain)
-- [Google Gmail API](https://developers.google.com/gmail/api)
-- [PGLite](https://pglite.io/)
-- [OpenRouter API](https://openrouter.ai/)
-
-## License
-
-Personal project — All rights reserved.
+* [gbrain](https://github.com/garrytan/gbrain)
+* [Gmail API](https://developers.google.com/gmail/api)
+* [Google Drive API](https://developers.google.com/drive/api)
+* [Streamlit](https://streamlit.io/)
+* [OpenRouter](https://openrouter.ai/)
