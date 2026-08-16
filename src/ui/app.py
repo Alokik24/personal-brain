@@ -2,7 +2,7 @@ import streamlit as st
 
 from api.drive_search import answer_drive_question
 from api.email_search import answer_email_question
-from api.unified_search import answer_question
+from api.gbrain_think import answer_gbrain_question
 
 st.set_page_config(page_title="Personal Brain", page_icon="🧠")
 st.title("Personal Brain")
@@ -35,41 +35,53 @@ if question := st.chat_input(placeholder):
         elif source == "Google Drive":
             response = answer_drive_question(question)
         else:
-            response = answer_question(question)
+            response = answer_gbrain_question(question)
 
         st.write(response["answer"])
 
-        if response["sources"]:
+        if response.get("sources"):
             with st.expander("Sources"):
                 for source_item in response["sources"]:
                     if "subject" in source_item:
                         label = (
-                            f"{source_item['subject']} — "
-                            f"{source_item['from']}"
+                            f"{source_item.get('source_type', 'gmail')} — "
+                            f"{source_item.get('title', source_item['subject'])}"
                         )
                     elif "name" in source_item:
                         label = (
-                            f"{source_item['name']} — "
-                            f"{source_item['owner']}"
+                            f"{source_item.get('source_type', 'drive')} — "
+                            f"{source_item['name']}"
                         )
                     else:
-                        label = (
-                            f"{source_item['source_type']} — "
-                            f"{source_item['title']}"
+                        source_type = source_item.get(
+                            "source_type",
+                            source_item.get("source", "source"),
                         )
+                        title = source_item.get(
+                            "title",
+                            source_item.get("name", "Untitled"),
+                        )
+                        label = f"{source_type} — {title}"
 
-                    if source_item["link"]:
-                        st.markdown(
-                            f"[{label}]({source_item['link']})"
-                        )
+                    link = source_item.get("link", "")
+
+                    if link:
+                        st.markdown(f"[{label}]({link})")
                     else:
                         st.write(label)
 
         if response.get("citations"):
             with st.expander("Citations"):
                 for citation in response["citations"]:
-                    st.markdown(
-                        f"**{citation['source_type']} — "
-                        f"{citation['title']}**"
+                    source_type = citation.get(
+                        "source_type",
+                        citation.get("source", "source"),
                     )
-                    st.write(f"“{citation['quote']}”")
+                    title = citation.get("title", "untitled")
+
+                    st.markdown(
+                        f"**{source_type} — {title}**"
+                    )
+
+                    if citation.get("quote"):
+                        st.write(f"“{citation['quote']}”")

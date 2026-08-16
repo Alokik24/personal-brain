@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 from .drive_search import answer_drive_question
 from .email_search import answer_email_question
-from .unified_search import answer_question
+from .gbrain_think import answer_gbrain_question
 
 app = FastAPI(title="Personal Brain API")
 
@@ -22,21 +22,22 @@ class ChatRequest(BaseModel):
 
 @app.post("/chat")
 async def chat(request: ChatRequest) -> dict:
-    """Answer a question from all connected sources or one selected source."""
+    """Answer from one source or across the connected personal brain."""
+
     if request.source == "drive":
         return answer_drive_question(request.question)
+
     if request.source == "email":
         return answer_email_question(request.question)
-    return answer_question(request.question)
+
+    return answer_gbrain_question(request.question)
 
 
 @app.post("/chat/drive")
 async def drive_chat(request: ChatRequest) -> dict:
-    """Convenience endpoint for a Drive-only question."""
     return answer_drive_question(request.question)
 
 
 @app.post("/chat/all")
 async def all_sources_chat(request: ChatRequest) -> dict:
-    """Explicit cross-source endpoint: retrieve and reason over Gmail + Drive."""
-    return answer_question(request.question)
+    return answer_gbrain_question(request.question)
