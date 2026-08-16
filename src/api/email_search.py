@@ -8,7 +8,6 @@ match is much more reliable than embeddings alone.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 import re
 from typing import Iterable
@@ -22,9 +21,20 @@ EMAIL_DIRECTORY = Path(__file__).resolve().parents[2] / "brain-source" / "emails
 TOKEN_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
 SENTENCE_RE = re.compile(r"(?<=[.!?])\s+|\n+(?=[A-Z•-])")
 STOP_WORDS = {
-    "a", "about", "an", "and", "are", "did", "ever", "find", "for", "from",
-    "have", "i", "is", "me", "my", "of", "on", "the", "to", "what", "with",
-    "you", "your",
+    # General language
+    "a", "about", "an", "and", "are", "did", "ever", "find", "for",
+    "from", "have", "i", "is", "me", "my", "of", "on", "the", "to",
+    "what", "with", "you", "your",
+
+    # Generic entity words
+    "email", "emails", "message", "messages",
+    "file", "files", "document", "documents",
+    "related", "thing", "things",
+
+    # Query / presentation modifiers.
+    # These describe the requested operation rather than the entity.
+    "latest", "recent", "newest", "oldest", "current",
+    "list", "show", "give", "tell", "which",
 }
 
 
@@ -87,26 +97,57 @@ def load_emails(directory: Path = EMAIL_DIRECTORY) -> list[Email]:
 
 
 def _score(query_tokens: list[str], email: Email) -> float:
-    """Prefer coverage of every query term, then subject/sender exact matches."""
+    """Score only candidates with meaningful query-term coverage."""
+
+    if not query_tokens:
+        return 0.0
+
+    unique_tokens = set(query_tokens)
     subject = email.subject.lower()
     sender = email.sender.lower()
     text = email.searchable_text.lower()
-    matched = [token for token in query_tokens if token in text]
+
+    matched = {
+        token
+        for token in unique_tokens
+        if token in text
+    }
+
     if not matched:
         return 0.0
 
-    # Query-term coverage avoids a long newsletter winning because it repeats
-    # one broad word such as "pay" or "job".
-    coverage = len(set(matched)) / len(set(query_tokens))
-    score = coverage * 10 + len(matched)
-    score += sum(5 for token in query_tokens if token in subject)
-    score += sum(3 for token in query_tokens if token in sender)
+    coverage = len(matched) / len(unique_tokens)
 
+    # For multi-term queries, require most of the actual query to
+    # occur in the email. This prevents:
+    #
+    # "narendra modi" -> unrelated email containing only "modi"
+    #
+    # from being considered relevant.
+    if len(unique_tokens) >= 2 and coverage < 0.75:
+        return 0.0
+
+    score = coverage * 10
+
+    # Exact matches in high-signal fields are stronger than body matches.
+    score += sum(6 for token in unique_tokens if token in subject)
+    score += sum(4 for token in unique_tokens if token in sender)
+
+    # Exact multi-word phrase gets a substantial boost.
     query_phrase = " ".join(query_tokens)
-    if len(query_tokens) > 1 and query_phrase in text:
-        score += 8
-    return score
 
+    if len(query_tokens) >= 2 and query_phrase in text:
+        score += 10
+
+    # A one-word query must have a strong field match rather than
+    # merely appearing somewhere in a long email body.
+    if len(unique_tokens) == 1 and not (
+        query_tokens[0] in subject
+        or query_tokens[0] in sender
+    ):
+        return 0.0
+
+    return score
 
 def _best_excerpt(email: Email, query_tokens: Iterable[str]) -> str:
     tokens = set(query_tokens)
@@ -137,16 +178,13 @@ def search_emails(question: str, limit: int = 5, directory: Path = EMAIL_DIRECTO
     return sorted((item for item in results if item.score > 0), key=lambda item: item.score, reverse=True)[:limit]
 
 
-def _format_date(value: str) -> str:
-    try:
-        return datetime.fromisoformat(value).strftime("%b %-d, %Y")
-    except ValueError:
-        return value or "an unknown date"
-
-
-def answer_email_question(question: str, directory: Path = EMAIL_DIRECTORY) -> dict:
-    """Return a concise answer plus the source messages that support it."""
+def answer_email_question(
+    question: str,
+    directory: Path = EMAIL_DIRECTORY,
+) -> dict:
+    """Answer a question using locally retrieved Gmail evidence."""
     results = search_emails(question, directory=directory)
+
     if not results:
         return {
             "answer": "I couldn't find an email that matches that question in the local Gmail export.",
@@ -154,25 +192,24 @@ def answer_email_question(question: str, directory: Path = EMAIL_DIRECTORY) -> d
         }
 
     top = results[0]
+
     if len(results) == 1 or top.score >= results[1].score + 4:
-        answer = f"{top.excerpt}"
         source_results = results[:1]
+        fallback = top.excerpt
     else:
         source_results = results[:3]
-        items = "; ".join(
-            f"{result.email.subject} ({_format_date(result.email.date)}): {result.excerpt}"
-            for result in source_results
-        )
-        answer = f"I found {len(source_results)} relevant emails. {items}"
+        fallback = "I found several relevant emails."
 
     answer = synthesize_answer(
         question,
         (
-            f"Subject: {result.email.subject}\nFrom: {result.email.sender}\n"
-            f"Date: {result.email.date}\n\n{result.email.body}"
+            f"Subject: {result.email.subject}\n"
+            f"From: {result.email.sender}\n"
+            f"Date: {result.email.date}\n\n"
+            f"{result.email.body}"
             for result in source_results
         ),
-        answer,
+        fallback,
         "Gmail",
     )
 
